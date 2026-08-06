@@ -74,7 +74,8 @@ function createSettingsWindow() {
   }
 
   settingsWindow = new BrowserWindow({
-    width: 700,
+    width: 850,
+    minWidth: 800,
     height: 550,
     title: '設定',
     autoHideMenuBar: true,
