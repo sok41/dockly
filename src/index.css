@@ -1,0 +1,16 @@
+/* src/index.css */
+
+/* デフォルトの余白を消し、スクロールバーを非表示にする */
+body {
+  margin: 0;
+  padding: 0;
+  background-color: transparent; /* 背景を透明にする */
+  overflow: hidden; /* スクロールバーを出さない */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-app-region: drag; /* ウィンドウ全体をドラッグ可能にする */
+}
+
+/* 入力欄など、インタラクティブな要素はドラッグ対象外にする */
+input, button {
+  -webkit-app-region: no-drag;
+}
