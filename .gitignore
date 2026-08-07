@@ -35,3 +35,6 @@ release/
 .DS_Store
 *.log
 .vscode/
+
+# テストファイルの場所
+test_files/

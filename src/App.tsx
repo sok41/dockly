@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Search, Globe, AppWindow, Plus, Trash2, Key, Info, Rocket, ExternalLink } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Search, Globe, AppWindow, Plus, Trash2, Key, Info, Rocket, ExternalLink, Upload, Download } from 'lucide-react'
 import pkg from '../package.json'
 
 // Electron IPCの読み込み (nodeIntegration: true)
@@ -162,10 +162,13 @@ function SettingsUI() {
   const [hotkey, setHotkey] = useState('Alt+Space')
   const [shortcuts, setShortcuts] = useState<ShortcutItem[]>([])
 
-// 「このアプリについて」情報
+  // ファイル選択用の参照
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // 「このアプリについて」情報
   const [aboutInfo, setAboutInfo] = useState<AboutInfo>({
-    appName: pkg.name, // または "SimpleLauncher"
-    version: pkg.version, // 👈 これで package.json のバージョン（1.0.0.1）が反映されます！
+    appName: pkg.name,
+    version: pkg.version,
     author: "sok",
     githubUrl: "https://github.com/sok/simple-launcher",
     description: "シンプルで使いやすい軽量デスクトップランチャーアプリです。",
@@ -191,9 +194,7 @@ function SettingsUI() {
     fetch('/about.json')
       .then(res => res.json())
       .then(data => setAboutInfo(data))
-      .catch(() => {
-        // about.jsonが見つからない場合はデフォルト値を使用
-      })
+      .catch(() => {})
   }, [])
 
   // ホットキーの変更保存
@@ -233,14 +234,90 @@ function SettingsUI() {
     if (ipcRenderer) ipcRenderer.invoke('save-shortcuts', updated)
   }
 
+  // --- CSV インポート処理 ---
+  const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const text = event.target?.result as string
+      if (!text) return
+
+      const lines = text.split(/\r?\n/)
+      const importedList: ShortcutItem[] = []
+
+      lines.forEach((line, index) => {
+        const trimmed = line.trim()
+        if (!trimmed) return
+
+        // ヘッダー行のスキップ
+        if (index === 0 && (trimmed.includes('名前') || trimmed.toLowerCase().includes('name'))) return
+
+        // カンマ区切り（ダブルクォーテーション対応）
+        const parts = trimmed.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || trimmed.split(',')
+        if (parts.length >= 3) {
+          const nameVal = parts[0].replace(/^"|"$/g, '').trim()
+          const descVal = parts[1].replace(/^"|"$/g, '').trim()
+          const targetVal = parts[2].replace(/^"|"$/g, '').trim()
+          
+          // 種別判定（httpから始まればURL、それ以外はapp）
+          const typeVal: 'url' | 'app' = targetVal.startsWith('http://') || targetVal.startsWith('https://') ? 'url' : 'app'
+
+          if (nameVal && targetVal) {
+            importedList.push({
+              id: (Date.now() + index).toString(),
+              name: nameVal,
+              description: descVal,
+              target: targetVal,
+              type: typeVal
+            })
+          }
+        }
+      })
+
+      if (importedList.length > 0) {
+        const updated = [...shortcuts, ...importedList]
+        setShortcuts(updated)
+        if (ipcRenderer) ipcRenderer.invoke('save-shortcuts', updated)
+        alert(`${importedList.length} 件のショートカットをインポートしました！`)
+      } else {
+        alert('有効なデータが見つかりませんでした。CSVの形式（名前,説明,URL）を確認してください。')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = '' // リセット
+  }
+
+  // --- CSV エクスポート処理 ---
+  const handleExportCSV = () => {
+    if (shortcuts.length === 0) {
+      alert('エクスポートするショートカットがありません。')
+      return
+    }
+
+    const header = '名前,説明,URL\n'
+    const rows = shortcuts
+      .map(s => `"${s.name.replace(/"/g, '""')}","${s.description.replace(/"/g, '""')}","${s.target.replace(/"/g, '""')}"`)
+      .join('\n')
+
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf]) // UTF-8 BOM（文字化け防止）
+    const blob = new Blob([bom, header + rows], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = 'shortcuts.csv'
+    link.click()
+  }
+
   return (
     <div style={{
       display: 'flex',
-      minHeight: '100vh', // 縦に伸ばしても白くならないよう徹底指定
+      height: '100vh',
       backgroundColor: '#181b22',
       color: '#abb2bf',
       fontFamily: 'sans-serif',
-      boxSizing: 'border-box'
+      boxSizing: 'border-box',
+      overflow: 'hidden'
     }}>
       {/* 1. 左側サイドバー */}
       <div style={{
@@ -251,7 +328,9 @@ function SettingsUI() {
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
-        flexShrink: 0
+        flexShrink: 0,
+        height: '100%',
+        boxSizing: 'border-box'
       }}>
         <div style={{
           color: '#fff',
@@ -304,7 +383,7 @@ function SettingsUI() {
             fontSize: '14px'
           }}
         >
-          <Plus size={16} /> ショートカット追加
+          <Plus size={16} /> ショートカット管理
         </button>
 
         <button
@@ -331,9 +410,11 @@ function SettingsUI() {
       {/* 2. 右側メインコンテンツ */}
       <div style={{
         flex: 1,
+        height: '100%',
         padding: '28px',
         backgroundColor: '#181b22',
-        overflowY: 'auto'
+        overflowY: 'auto',
+        boxSizing: 'border-box'
       }}>
         {/* タブ1: 起動キー設定 */}
         {activeTab === 'hotkey' && (
@@ -382,9 +463,62 @@ function SettingsUI() {
           <div>
             <h2 style={{ color: '#fff', marginTop: 0, marginBottom: '20px' }}>ショートカット管理</h2>
             
+            {/* CSV 一括読み込み / 書き出し */}
+            <section style={{ marginBottom: '20px', backgroundColor: '#21252b', padding: '16px 20px', borderRadius: '8px', border: '1px solid #2d333f', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h3 style={{ color: '#fff', margin: 0, fontSize: '15px' }}>一括データ操作 (CSV)</h3>
+                <p style={{ color: '#828997', margin: '4px 0 0 0', fontSize: '12px' }}>「名前, 説明, URL」の構成でCSVから登録・書き出しが可能です。</p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <input
+                  type="file"
+                  accept=".csv"
+                  ref={fileInputRef}
+                  onChange={handleImportCSV}
+                  style={{ display: 'none' }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    backgroundColor: '#2c313a',
+                    border: '1px solid #3e4451',
+                    color: '#61afef',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  <Upload size={14} /> CSVインポート
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 14px',
+                    backgroundColor: '#2c313a',
+                    border: '1px solid #3e4451',
+                    color: '#abb2bf',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '13px'
+                  }}
+                >
+                  <Download size={14} /> CSVエクスポート
+                </button>
+              </div>
+            </section>
+
+            {/* 個別追加フォーム */}
             <section style={{ marginBottom: '24px', backgroundColor: '#21252b', padding: '20px', borderRadius: '8px', border: '1px solid #2d333f' }}>
               <h3 style={{ color: '#61afef', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Plus size={18} /> ショートカット追加
+                <Plus size={18} /> ショートカット手動追加
               </h3>
               <form onSubmit={handleAddShortcut} style={{ display: 'grid', gap: '12px' }}>
                 <div style={{ display: 'flex', gap: '10px' }}>
@@ -439,6 +573,7 @@ function SettingsUI() {
               </form>
             </section>
 
+            {/* 一覧表示 */}
             <section>
               <h3 style={{ color: '#fff', fontSize: '16px' }}>登録済みショートカット ({shortcuts.length})</h3>
               <div style={{ display: 'grid', gap: '8px' }}>
