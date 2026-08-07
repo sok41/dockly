@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "electron-store": "^11.0.2",
+    "i18next": "^26.3.6",
     "lucide-react": "^1.28.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "react-i18next": "^17.0.11"
   },
   "devDependencies": {
     "@types/react": "^18.2.64",
@@ -45,17 +47,19 @@
     "win": {
       "target": [
         {
-          "target": "nsis", 
-          "arch": ["x64"]
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "public/icon.png"
     },
     "nsis": {
-      "oneClick": false,            
+      "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true, 
-      "createStartMenuShortcut": true 
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }
