@@ -159,7 +159,7 @@ function LauncherUI() {
 // --- 設定画面（左サイドバー + 右コンテンツ） ---
 function SettingsUI() {
   const [activeTab, setActiveTab] = useState<'hotkey' | 'shortcuts' | 'about'>('hotkey')
-  const [hotkey, setHotkey] = useState('Alt+Space')
+  const [hotkey, setHotkey] = useState('Ctrl+Alt+Space')
   const [shortcuts, setShortcuts] = useState<ShortcutItem[]>([])
 
   // ファイル選択用の参照
@@ -185,7 +185,7 @@ function SettingsUI() {
     // 既存データの読み込み
     if (ipcRenderer) {
       ipcRenderer.invoke('get-store-data').then((data: { hotkey?: string; shortcuts?: ShortcutItem[] }) => {
-        setHotkey(data.hotkey || 'Alt+Space')
+        setHotkey(data.hotkey || 'Ctrl+Alt+Space')
         setShortcuts(data.shortcuts || [])
       })
     }
@@ -429,7 +429,7 @@ function SettingsUI() {
                   type="text"
                   value={hotkey}
                   onChange={(e) => setHotkey(e.target.value)}
-                  placeholder="例: Alt+Space, Ctrl+Shift+L"
+                  placeholder="例: Ctrl+Alt+Space, Ctrl+Shift+L"
                   style={{
                     padding: '8px 12px',
                     backgroundColor: '#1b1d23',

@@ -9,7 +9,7 @@ const __dirname = path.dirname(__filename)
 // データ保存用ストアの初期化
 const store = new Store({
   defaults: {
-    hotkey: 'Alt+Space',
+    hotkey: 'Ctrl+Alt+Space',
     shortcuts: [
       { id: '1', name: 'tenki', description: 'Yahoo!天気', target: 'https://weather.yahoo.co.jp/weather/', type: 'url' }
     ]
