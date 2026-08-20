@@ -1,7 +1,7 @@
 {
-  "name": "Simple Launcher",
+  "name": "simple-launcher",
   "private": true,
-  "version": "1.0.0.1",
+  "version": "1.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -38,6 +38,7 @@
   "build": {
     "appId": "com.simplelauncher.app",
     "productName": "SimpleLauncher",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -45,6 +46,11 @@
       "dist/**/*",
       "dist-electron/**/*"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "sok41",
+      "repo": "simple-launcher"
+    },
     "win": {
       "target": [
         {

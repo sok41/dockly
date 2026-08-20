@@ -1,7 +1,8 @@
-import { app, BrowserWindow, Menu, Tray, nativeImage, globalShortcut, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, Menu, Tray, nativeImage, globalShortcut, ipcMain, shell, dialog } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Store from 'electron-store'
+import { autoUpdater } from 'electron-updater'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -9,7 +10,9 @@ const __dirname = path.dirname(__filename)
 // データ保存用ストアの初期化
 const store = new Store({
   defaults: {
-    hotkey: 'Ctrl+Alt+Space',
+    // Ctrl+Alt+Space は他アプリ（各種ランチャー/オーバーレイ系）が好んで使う組み合わせで
+    // 競合しやすいため、文字キーを使った Ctrl+Alt+L をデフォルトにする
+    hotkey: 'Ctrl+Alt+L',
     shortcuts: [
       { id: '1', name: 'tenki', description: 'Yahoo!天気', target: 'https://weather.yahoo.co.jp/weather/', type: 'url' }
     ]
@@ -21,10 +24,11 @@ let settingsWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
 // グローバルショートカットの登録関数
-function registerGlobalShortcut(shortcutKey: string) {
+// 戻り値: 登録に成功したか（他アプリと競合している場合は false になる）
+function registerGlobalShortcut(shortcutKey: string): boolean {
   globalShortcut.unregisterAll()
   try {
-    globalShortcut.register(shortcutKey, () => {
+    const success = globalShortcut.register(shortcutKey, () => {
       if (mainWindow?.isVisible()) {
         mainWindow.hide()
       } else {
@@ -32,8 +36,14 @@ function registerGlobalShortcut(shortcutKey: string) {
         mainWindow?.focus()
       }
     })
+    if (!success) {
+      // register() は他アプリがそのキーを既に使っている場合、例外を投げずに false を返す
+      console.error('Failed to register shortcut (already in use by another app):', shortcutKey)
+    }
+    return success
   } catch (err) {
     console.error('Failed to register shortcut:', err)
+    return false
   }
 }
 
@@ -149,10 +159,11 @@ ipcMain.handle('save-shortcuts', (_, shortcuts) => {
 })
 
 // 3. 起動ホットキーの変更・保存
+// 戻り値: 実際にOS側への登録まで成功したか（false の場合は他アプリと競合している）
 ipcMain.handle('save-hotkey', (_, hotkey: string) => {
-  store.set('hotkey', hotkey)
-  registerGlobalShortcut(hotkey)
-  return true
+  const success = registerGlobalShortcut(hotkey)
+  store.set('hotkey', hotkey) // 競合していても希望のキーとして保存はしておく（後で他アプリが閉じれば有効になる）
+  return success
 })
 
 // 4. URLまたはアプリの起動処理
@@ -165,10 +176,97 @@ ipcMain.handle('open-target', (_, { target, type }) => {
   mainWindow?.hide()
 })
 
+// 4.5 外部リンクをOS既定のブラウザで開く（設定画面のGitHubリンクなど）
+ipcMain.handle('open-external', (_, url: string) => {
+  shell.openExternal(url)
+})
+
 // 5. メインウィンドウの高さ変更（候補数に応じて伸ばす）
 ipcMain.handle('resize-window', (_, height: number) => {
   if (mainWindow) {
     mainWindow.setSize(600, height)
+  }
+})
+
+// --- 自動アップデート（GitHub Releases経由） ---
+autoUpdater.autoDownload = false
+autoUpdater.autoInstallOnAppQuit = false
+
+function getUpdateDialogParent(): BrowserWindow | undefined {
+  return settingsWindow ?? mainWindow ?? undefined
+}
+
+autoUpdater.on('update-available', (info) => {
+  const parent = getUpdateDialogParent()
+  dialog.showMessageBox(parent as BrowserWindow, {
+    type: 'info',
+    title: 'アップデートがあります',
+    message: 'アップデートがありました。インストールしますか？',
+    detail: `新しいバージョン (v${info.version}) が利用可能です。`,
+    buttons: ['インストール', 'キャンセル'],
+    cancelId: 1,
+    defaultId: 0,
+  }).then((result) => {
+    if (result.response === 0) {
+      autoUpdater.downloadUpdate()
+    }
+  })
+})
+
+autoUpdater.on('update-not-available', () => {
+  const parent = getUpdateDialogParent()
+  dialog.showMessageBox(parent as BrowserWindow, {
+    type: 'info',
+    title: 'アップデート確認',
+    message: '現在お使いのバージョンは最新です。',
+  })
+})
+
+autoUpdater.on('error', (err) => {
+  const parent = getUpdateDialogParent()
+  dialog.showMessageBox(parent as BrowserWindow, {
+    type: 'error',
+    title: 'アップデートエラー',
+    message: 'アップデートの確認中にエラーが発生しました。',
+    detail: String(err),
+  })
+})
+
+autoUpdater.on('update-downloaded', () => {
+  const parent = getUpdateDialogParent()
+  dialog.showMessageBox(parent as BrowserWindow, {
+    type: 'info',
+    title: 'アップデートの準備ができました',
+    message: 'ダウンロードが完了しました。今すぐ再起動してインストールしますか？',
+    buttons: ['今すぐ再起動', '後で'],
+    cancelId: 1,
+    defaultId: 0,
+  }).then((result) => {
+    if (result.response === 0) {
+      autoUpdater.quitAndInstall()
+    }
+  })
+})
+
+// 6. アップデート確認（設定画面「このアプリについて」タブのボタンから呼び出し）
+ipcMain.handle('check-for-update', async () => {
+  if (!app.isPackaged) {
+    dialog.showMessageBox(getUpdateDialogParent() as BrowserWindow, {
+      type: 'info',
+      title: 'アップデート確認',
+      message: '開発モードのためアップデート確認はスキップされました。',
+    })
+    return
+  }
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (err) {
+    dialog.showMessageBox(getUpdateDialogParent() as BrowserWindow, {
+      type: 'error',
+      title: 'アップデートエラー',
+      message: 'アップデートの確認中にエラーが発生しました。',
+      detail: String(err),
+    })
   }
 })
 

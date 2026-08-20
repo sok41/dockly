@@ -1,30 +1,60 @@
-# React + TypeScript + Vite
+# SimpleLauncher
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+ホットキー1つで、よく使うWebサイトやアプリをすぐに呼び出せる、シンプルなWindows用デスクトップランチャーです。
 
-Currently, two official plugins are available:
+## 主な機能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **ホットキーで起動**: あらかじめ設定したキー（デフォルト: `Ctrl+Alt+L`）を押すと、検索バーが画面に表示されます。もう一度押すか、フォーカスを外すと非表示になります。
+- **インクリメンタル検索**: 名前や説明で登録済みのショートカットを絞り込み、`↑` `↓`（または `Tab` / `Shift+Tab`）で選択、`Enter`で実行できます。
+- **URL / アプリの両対応**: WebサイトのURLだけでなく、`.exe`などのアプリのパスも登録できます。
+- **CSVで一括管理**: 登録済みショートカットのインポート・エクスポートがCSV（`名前,説明,URL`形式）でできます。
+- **タスクトレイ常駐**: タスクバーには表示されず、タスクトレイのアイコンから「表示」「設定」「終了」を操作できます。
+- **自動アップデート確認**: 設定画面からGitHub Releasesの最新版を確認し、その場でインストールできます。
 
-## Expanding the ESLint configuration
+## 使い方
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+### 1. 起動する
 
-- Configure the top-level `parserOptions` property like this:
+インストール後、アプリはタスクトレイに常駐します。ホットキー（デフォルト `Ctrl+Alt+L`）を押すと検索バーが表示されます。
 
-```js
-export default {
-  // other rules...
-  parserOptions: {
-    ecmaVersion: 'latest',
-    sourceType: 'module',
-    project: ['./tsconfig.json', './tsconfig.node.json'],
-    tsconfigRootDir: __dirname,
-  },
-}
+### 2. ショートカットを登録する
+
+タスクトレイアイコンを右クリック →「設定」から設定画面を開きます。
+
+1. 左サイドバーの「ショートカット管理」を選択
+2. 「名前」「説明」「URLまたはファイルパス」「種別（Web / アプリ）」を入力して「追加」
+3. 一覧から不要な項目は削除アイコンで削除できます
+
+CSVで一括登録したい場合は、「一括データ操作 (CSV)」から `名前,説明,URL` の3列構成のCSVファイルをインポートしてください。逆に、現在の登録内容をCSVとして書き出すこともできます。
+
+### 3. 検索して起動する
+
+ホットキーで検索バーを開き、名前や説明の一部を入力すると候補が表示されます。`↑` `↓` で選び `Enter`、またはマウスでクリックすると、URLはブラウザで、アプリは実行ファイルとして起動します。
+
+### 4. 起動キーを変更する
+
+設定画面の「起動キー設定」タブで、キー入力欄をクリックしてから割り当てたいキーの組み合わせ（修飾キー + キー）を実際に押すと、その内容が自動で入力されます。「保存」を押すと反映されます。
+
+> 他のアプリと同じキーが割り当てられていると登録に失敗することがあります。その場合は保存時にメッセージが表示されるので、別のキーの組み合わせをお試しください。
+
+### 5. アップデートを確認する
+
+設定画面の「このアプリについて」タブ内、ライセンス情報の下にある「アップデートを確認」ボタンから、GitHub上の最新版を確認できます。新しいバージョンがあればダイアログが表示され、そのままインストール・再起動できます。
+
+## 開発者向け
+
+```bash
+npm install       # 依存パッケージのインストール
+npm run dev        # 開発モードで起動（Vite + Electron）
+npm run build       # ビルド（Windows用インストーラーを release/ に出力）
+npm run lint        # ESLintによるチェック
 ```
 
-- Replace `plugin:@typescript-eslint/recommended` to `plugin:@typescript-eslint/recommended-type-checked` or `plugin:@typescript-eslint/strict-type-checked`
-- Optionally add `plugin:@typescript-eslint/stylistic-type-checked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and add `plugin:react/recommended` & `plugin:react/jsx-runtime` to the `extends` list
+- フロントエンド: React + TypeScript + Vite
+- デスクトップ: Electron
+- データ保存: `electron-store`（ローカルにJSONで保存）
+- 自動アップデート: `electron-updater`（GitHub Releases経由）
+
+## ライセンス
+
+MIT License
