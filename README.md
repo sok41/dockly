@@ -1,4 +1,6 @@
-# SimpleLauncher
+# Dockly
+
+[日本語](README.md) | [English](README.en.md)
 
 ホットキー1つで、よく使うWebサイトやアプリをすぐに呼び出せる、シンプルなWindows用デスクトップランチャーです。
 

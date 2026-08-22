@@ -7,17 +7,109 @@ import { autoUpdater } from 'electron-updater'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
+// アプリアイコン（ウィンドウのタイトルバー/タスクバー、トレイで共通利用）
+const APP_ICON_PATH = path.join(__dirname, '../public/icon.png')
+
+type Language = 'ja' | 'en'
+
+// メインプロセス側（トレイメニュー・ネイティブダイアログ）の文言。
+// レンダラー側（設定画面）の文言は src/i18n.ts で別途管理している。
+const LOCALES: Record<Language, {
+  trayShow: string
+  traySettings: string
+  trayQuit: string
+  settingsWindowTitle: string
+  updateAvailableTitle: string
+  updateAvailableMessage: string
+  updateAvailableDetail: (version: string) => string
+  installButton: string
+  cancelButton: string
+  updateNotAvailableTitle: string
+  updateNotAvailableMessage: string
+  updateErrorTitle: string
+  updateErrorMessage: string
+  updateDownloadedTitle: string
+  updateDownloadedMessage: string
+  restartNowButton: string
+  laterButton: string
+  devModeSkipMessage: string
+}> = {
+  ja: {
+    trayShow: '表示',
+    traySettings: '設定',
+    trayQuit: '終了',
+    settingsWindowTitle: '設定',
+    updateAvailableTitle: 'アップデートがあります',
+    updateAvailableMessage: 'アップデートがありました。インストールしますか？',
+    updateAvailableDetail: (version) => `新しいバージョン (v${version}) が利用可能です。`,
+    installButton: 'インストール',
+    cancelButton: 'キャンセル',
+    updateNotAvailableTitle: 'アップデート確認',
+    updateNotAvailableMessage: '現在お使いのバージョンは最新です。',
+    updateErrorTitle: 'アップデートエラー',
+    updateErrorMessage: 'アップデートの確認中にエラーが発生しました。',
+    updateDownloadedTitle: 'アップデートの準備ができました',
+    updateDownloadedMessage: 'ダウンロードが完了しました。今すぐ再起動してインストールしますか？',
+    restartNowButton: '今すぐ再起動',
+    laterButton: '後で',
+    devModeSkipMessage: '開発モードのためアップデート確認はスキップされました。',
+  },
+  en: {
+    trayShow: 'Show',
+    traySettings: 'Settings',
+    trayQuit: 'Quit',
+    settingsWindowTitle: 'Settings',
+    updateAvailableTitle: 'Update Available',
+    updateAvailableMessage: 'An update is available. Install it now?',
+    updateAvailableDetail: (version) => `A new version (v${version}) is available.`,
+    installButton: 'Install',
+    cancelButton: 'Cancel',
+    updateNotAvailableTitle: 'Check for Updates',
+    updateNotAvailableMessage: 'You are using the latest version.',
+    updateErrorTitle: 'Update Error',
+    updateErrorMessage: 'An error occurred while checking for updates.',
+    updateDownloadedTitle: 'Update Ready',
+    updateDownloadedMessage: 'The download is complete. Restart now to install?',
+    restartNowButton: 'Restart Now',
+    laterButton: 'Later',
+    devModeSkipMessage: 'Update check skipped in development mode.',
+  },
+}
+
 // データ保存用ストアの初期化
-const store = new Store({
+// ※ language はここでは静的デフォルトにせず、app.whenReady() 内でOSのロケールから動的に決定する
+interface ShortcutData {
+  id: string
+  name: string
+  description: string
+  target: string
+  type: string
+}
+
+interface StoreSchema {
+  hotkey: string
+  shortcuts: ShortcutData[]
+  language: Language
+}
+
+const store = new Store<StoreSchema>({
   defaults: {
     // Ctrl+Alt+Space は他アプリ（各種ランチャー/オーバーレイ系）が好んで使う組み合わせで
     // 競合しやすいため、文字キーを使った Ctrl+Alt+L をデフォルトにする
     hotkey: 'Ctrl+Alt+L',
     shortcuts: [
-      { id: '1', name: 'tenki', description: 'Yahoo!天気', target: 'https://weather.yahoo.co.jp/weather/', type: 'url' }
+      { id: '1', name: 'Google', description: 'search engine', target: 'https://www.google.com/', type: 'url' }
     ]
-  }
+  } as StoreSchema // language はここでは静的デフォルトにせず、app.whenReady() 内でOSのロケールから動的に決定する
 })
+
+function getLanguage(): Language {
+  return store.get('language') === 'ja' ? 'ja' : 'en'
+}
+
+function getLocale() {
+  return LOCALES[getLanguage()]
+}
 
 let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
@@ -58,6 +150,7 @@ function createMainWindow() {
     show: true,
     hasShadow: false,
     skipTaskbar: true,
+    icon: APP_ICON_PATH,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: true,
@@ -87,7 +180,8 @@ function createSettingsWindow() {
     width: 850,
     minWidth: 800,
     height: 550,
-    title: '設定',
+    title: getLocale().settingsWindowTitle,
+    icon: APP_ICON_PATH,
     autoHideMenuBar: true,
     resizable: true,
     webPreferences: {
@@ -108,10 +202,26 @@ function createSettingsWindow() {
   })
 }
 
+// トレイのコンテキストメニュー・ツールチップを現在の言語で作り直す
+// （初回作成時・言語切り替え時の両方から呼ばれる）
+function updateTrayMenu() {
+  if (!tray) return
+  const locale = getLocale()
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: locale.trayShow, click: () => { mainWindow?.show(); mainWindow?.focus() } },
+    { label: locale.traySettings, click: () => { createSettingsWindow() } },
+    { type: 'separator' },
+    { label: locale.trayQuit, click: () => { app.quit() } },
+  ])
+
+  tray.setToolTip('Dockly')
+  tray.setContextMenu(contextMenu)
+}
+
 function createTray() {
-// 1. アイコン画像パスの指定（プロジェクト直下の public/icon.png）
-  const iconPath = path.join(__dirname, '../public/icon.png')
-  let icon = nativeImage.createFromPath(iconPath)
+// 1. アイコン画像の読み込み（プロジェクト直下の public/icon.png）
+  let icon = nativeImage.createFromPath(APP_ICON_PATH)
 
   // 2. 画像が見つからない/読み込めない場合は、プログラムで「簡易アイコン（青い四角）」を生成する
   if (icon.isEmpty()) {
@@ -130,17 +240,8 @@ function createTray() {
   }
 
   tray = new Tray(icon)
-
-  const contextMenu = Menu.buildFromTemplate([
-    { label: '表示', click: () => { mainWindow?.show(); mainWindow?.focus() } },
-    { label: '設定', click: () => { createSettingsWindow() } },
-    { type: 'separator' },
-    { label: '終了', click: () => { app.quit() } },
-  ])
-
-  tray.setToolTip('SimpleLauncher')
-  tray.setContextMenu(contextMenu)
   tray.on('click', () => { mainWindow?.show(); mainWindow?.focus() })
+  updateTrayMenu()
 }
 
 // --- IPC 通信イベントハンドラー ---
@@ -148,7 +249,8 @@ function createTray() {
 ipcMain.handle('get-store-data', () => {
   return {
     hotkey: store.get('hotkey'),
-    shortcuts: store.get('shortcuts')
+    shortcuts: store.get('shortcuts'),
+    language: getLanguage(),
   }
 })
 
@@ -164,6 +266,13 @@ ipcMain.handle('save-hotkey', (_, hotkey: string) => {
   const success = registerGlobalShortcut(hotkey)
   store.set('hotkey', hotkey) // 競合していても希望のキーとして保存はしておく（後で他アプリが閉じれば有効になる）
   return success
+})
+
+// 3.5 表示言語の変更・保存（トレイメニュー・ネイティブダイアログにも反映）
+ipcMain.handle('save-language', (_, language: Language) => {
+  store.set('language', language === 'ja' ? 'ja' : 'en')
+  updateTrayMenu()
+  return true
 })
 
 // 4. URLまたはアプリの起動処理
@@ -198,12 +307,13 @@ function getUpdateDialogParent(): BrowserWindow | undefined {
 
 autoUpdater.on('update-available', (info) => {
   const parent = getUpdateDialogParent()
+  const locale = getLocale()
   dialog.showMessageBox(parent as BrowserWindow, {
     type: 'info',
-    title: 'アップデートがあります',
-    message: 'アップデートがありました。インストールしますか？',
-    detail: `新しいバージョン (v${info.version}) が利用可能です。`,
-    buttons: ['インストール', 'キャンセル'],
+    title: locale.updateAvailableTitle,
+    message: locale.updateAvailableMessage,
+    detail: locale.updateAvailableDetail(info.version),
+    buttons: [locale.installButton, locale.cancelButton],
     cancelId: 1,
     defaultId: 0,
   }).then((result) => {
@@ -215,30 +325,33 @@ autoUpdater.on('update-available', (info) => {
 
 autoUpdater.on('update-not-available', () => {
   const parent = getUpdateDialogParent()
+  const locale = getLocale()
   dialog.showMessageBox(parent as BrowserWindow, {
     type: 'info',
-    title: 'アップデート確認',
-    message: '現在お使いのバージョンは最新です。',
+    title: locale.updateNotAvailableTitle,
+    message: locale.updateNotAvailableMessage,
   })
 })
 
 autoUpdater.on('error', (err) => {
   const parent = getUpdateDialogParent()
+  const locale = getLocale()
   dialog.showMessageBox(parent as BrowserWindow, {
     type: 'error',
-    title: 'アップデートエラー',
-    message: 'アップデートの確認中にエラーが発生しました。',
+    title: locale.updateErrorTitle,
+    message: locale.updateErrorMessage,
     detail: String(err),
   })
 })
 
 autoUpdater.on('update-downloaded', () => {
   const parent = getUpdateDialogParent()
+  const locale = getLocale()
   dialog.showMessageBox(parent as BrowserWindow, {
     type: 'info',
-    title: 'アップデートの準備ができました',
-    message: 'ダウンロードが完了しました。今すぐ再起動してインストールしますか？',
-    buttons: ['今すぐ再起動', '後で'],
+    title: locale.updateDownloadedTitle,
+    message: locale.updateDownloadedMessage,
+    buttons: [locale.restartNowButton, locale.laterButton],
     cancelId: 1,
     defaultId: 0,
   }).then((result) => {
@@ -250,11 +363,12 @@ autoUpdater.on('update-downloaded', () => {
 
 // 6. アップデート確認（設定画面「このアプリについて」タブのボタンから呼び出し）
 ipcMain.handle('check-for-update', async () => {
+  const locale = getLocale()
   if (!app.isPackaged) {
     dialog.showMessageBox(getUpdateDialogParent() as BrowserWindow, {
       type: 'info',
-      title: 'アップデート確認',
-      message: '開発モードのためアップデート確認はスキップされました。',
+      title: locale.updateNotAvailableTitle,
+      message: locale.devModeSkipMessage,
     })
     return
   }
@@ -263,8 +377,8 @@ ipcMain.handle('check-for-update', async () => {
   } catch (err) {
     dialog.showMessageBox(getUpdateDialogParent() as BrowserWindow, {
       type: 'error',
-      title: 'アップデートエラー',
-      message: 'アップデートの確認中にエラーが発生しました。',
+      title: locale.updateErrorTitle,
+      message: locale.updateErrorMessage,
       detail: String(err),
     })
   }
@@ -272,6 +386,14 @@ ipcMain.handle('check-for-update', async () => {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null)
+
+  // 初回起動時のみ、OSのロケールから表示言語を自動判定する
+  // （一度でも保存された言語設定があれば、それを常に優先する）
+  if (!store.has('language')) {
+    const osLocale = app.getLocale().toLowerCase()
+    store.set('language', osLocale.startsWith('ja') ? 'ja' : 'en')
+  }
+
   createMainWindow()
   createTray()
 
@@ -279,7 +401,7 @@ app.whenReady().then(() => {
   registerGlobalShortcut(currentHotkey)
 })
 
-app.on('window-all-closed', (e: Electron.Event) => { 
-  e.preventDefault() 
+app.on('window-all-closed', (e: Electron.Event) => {
+  e.preventDefault()
 })
 app.on('will-quit', () => { globalShortcut.unregisterAll() })

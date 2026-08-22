@@ -1,5 +1,5 @@
 {
-  "name": "simple-launcher",
+  "name": "dockly",
   "private": true,
   "version": "1.0.1",
   "type": "module",
@@ -36,20 +36,21 @@
   },
   "main": "dist-electron/main.js",
   "build": {
-    "appId": "com.simplelauncher.app",
-    "productName": "SimpleLauncher",
+    "appId": "com.dockly.app",
+    "productName": "Dockly",
     "artifactName": "${productName}-Setup-${version}.${ext}",
     "directories": {
       "output": "release"
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "public/**/*"
     ],
     "publish": {
       "provider": "github",
       "owner": "sok41",
-      "repo": "simple-launcher"
+      "repo": "dockly"
     },
     "win": {
       "target": [

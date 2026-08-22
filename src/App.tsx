@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Search, Globe, AppWindow, Plus, Trash2, Key, Info, ExternalLink, Upload, Download, RefreshCw } from 'lucide-react'
 import pkg from '../package.json'
 
@@ -21,6 +22,8 @@ interface AboutInfo {
   description: string
   license?: string
 }
+
+type Language = 'ja' | 'en'
 
 // KeyboardEvent.code を Electron の accelerator キー名に変換するためのマップ
 const CODE_TO_ACCELERATOR_KEY: Record<string, string> = {
@@ -65,24 +68,26 @@ function codeToAcceleratorKey(code: string): string | null {
 
 // --- メイン画面（ランチャー本体） ---
 function LauncherUI() {
+  const { t, i18n } = useTranslation()
   const [query, setQuery] = useState('')
   const [shortcuts, setShortcuts] = useState<ShortcutItem[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  // ショートカット一覧を取得
+  // ショートカット一覧・言語設定を取得
   useEffect(() => {
     if (ipcRenderer) {
-      ipcRenderer.invoke('get-store-data').then((data: { shortcuts?: ShortcutItem[]; hotkey?: string }) => {
+      ipcRenderer.invoke('get-store-data').then((data: { shortcuts?: ShortcutItem[]; hotkey?: string; language?: Language }) => {
         setShortcuts(data.shortcuts || [])
+        if (data.language) i18n.changeLanguage(data.language)
       })
     }
-  }, [])
+  }, [i18n])
 
   // 入力キーワードに合致する候補をフィルタリング
-  const filteredShortcuts = query.trim() === '' 
-    ? [] 
-    : shortcuts.filter(s => 
-        s.name.toLowerCase().includes(query.toLowerCase()) || 
+  const filteredShortcuts = query.trim() === ''
+    ? []
+    : shortcuts.filter(s =>
+        s.name.toLowerCase().includes(query.toLowerCase()) ||
         s.description.toLowerCase().includes(query.toLowerCase())
       )
 
@@ -91,7 +96,7 @@ function LauncherUI() {
     if (ipcRenderer) {
       const baseHeight = 60
       const itemHeight = 50
-      const newHeight = filteredShortcuts.length > 0 
+      const newHeight = filteredShortcuts.length > 0
         ? baseHeight + Math.min(filteredShortcuts.length, 5) * itemHeight + 10
         : baseHeight
       ipcRenderer.invoke('resize-window', newHeight)
@@ -113,11 +118,11 @@ function LauncherUI() {
     if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
       e.preventDefault()
       setSelectedIndex((prev) => (prev + 1) % filteredShortcuts.length)
-    } 
+    }
     else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
       e.preventDefault()
       setSelectedIndex((prev) => (prev - 1 + filteredShortcuts.length) % filteredShortcuts.length)
-    } 
+    }
     else if (e.key === 'Enter') {
       e.preventDefault()
       if (filteredShortcuts[selectedIndex]) {
@@ -140,7 +145,7 @@ function LauncherUI() {
         <Search size={20} color="#858b97" style={{ marginRight: '12px', flexShrink: 0 }} />
         <input
           type="text"
-          placeholder="Type to search..."
+          placeholder={t('searchPlaceholder')}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
@@ -199,22 +204,24 @@ function LauncherUI() {
 
 // --- 設定画面（左サイドバー + 右コンテンツ） ---
 function SettingsUI() {
+  const { t, i18n } = useTranslation()
   const [activeTab, setActiveTab] = useState<'hotkey' | 'shortcuts' | 'about'>('hotkey')
   const [hotkey, setHotkey] = useState('Ctrl+Alt+L')
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false)
   const [recordingPreview, setRecordingPreview] = useState('')
   const [shortcuts, setShortcuts] = useState<ShortcutItem[]>([])
+  const [language, setLanguage] = useState<Language>('en')
 
   // ファイル選択用の参照
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // 「このアプリについて」情報
   const [aboutInfo, setAboutInfo] = useState<AboutInfo>({
-    appName: pkg.name,
+    appName: 'Dockly',
     version: pkg.version,
     author: "sok41",
-    githubUrl: "https://github.com/sok41/simple-launcher",
-    description: "シンプルで使いやすい軽量デスクトップランチャーアプリです。",
+    githubUrl: "https://github.com/sok41/dockly",
+    description: '', // 未指定時は t('aboutDescription') を表示する
     license: "MIT License"
   })
 
@@ -230,9 +237,12 @@ function SettingsUI() {
   useEffect(() => {
     // 既存データの読み込み
     if (ipcRenderer) {
-      ipcRenderer.invoke('get-store-data').then((data: { hotkey?: string; shortcuts?: ShortcutItem[] }) => {
+      ipcRenderer.invoke('get-store-data').then((data: { hotkey?: string; shortcuts?: ShortcutItem[]; language?: Language }) => {
         setHotkey(data.hotkey || 'Ctrl+Alt+L')
         setShortcuts(data.shortcuts || [])
+        const lang: Language = data.language === 'ja' ? 'ja' : 'en'
+        setLanguage(lang)
+        i18n.changeLanguage(lang)
       })
     }
 
@@ -241,7 +251,7 @@ function SettingsUI() {
       .then(res => res.json())
       .then(data => setAboutInfo(data))
       .catch(() => {})
-  }, [])
+  }, [i18n])
 
   // 起動キーの記録（入力欄への直接タイプではなく、実際にキーを押して登録する方式）
   useEffect(() => {
@@ -282,7 +292,7 @@ function SettingsUI() {
 
       // グローバルショートカットの誤爆防止のため、修飾キーを最低1つ必須にする
       if (!keyName || modifiers.length === 0) {
-        setRecordingPreview('修飾キー（Ctrl/Alt/Shiftなど）と一緒に押してください')
+        setRecordingPreview(t('hotkeyRecordingNeedsModifier'))
         return
       }
 
@@ -292,16 +302,25 @@ function SettingsUI() {
 
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [isRecordingHotkey])
+  }, [isRecordingHotkey, t])
 
   // ホットキーの変更保存
   const handleSaveHotkey = async () => {
     if (!ipcRenderer) return
     const success = await ipcRenderer.invoke('save-hotkey', hotkey)
     if (success) {
-      alert('起動キーを変更しました！')
+      alert(t('hotkeySavedSuccess'))
     } else {
-      alert('保存はしましたが、このキーの組み合わせは他のアプリと競合しているため、今回は登録できませんでした。別のキーをお試しください。')
+      alert(t('hotkeySavedConflict'))
+    }
+  }
+
+  // 言語の切り替え（即時反映 + メインプロセス側にも保存してトレイ/ダイアログに反映）
+  const handleChangeLanguage = async (lang: Language) => {
+    setLanguage(lang)
+    i18n.changeLanguage(lang)
+    if (ipcRenderer) {
+      await ipcRenderer.invoke('save-language', lang)
     }
   }
 
@@ -362,7 +381,7 @@ function SettingsUI() {
         const trimmed = line.trim()
         if (!trimmed) return
 
-        // ヘッダー行のスキップ
+        // ヘッダー行のスキップ（日本語/英語どちらの見出しにも対応）
         if (index === 0 && (trimmed.includes('名前') || trimmed.toLowerCase().includes('name'))) return
 
         // カンマ区切り（ダブルクォーテーション対応）
@@ -371,7 +390,7 @@ function SettingsUI() {
           const nameVal = parts[0].replace(/^"|"$/g, '').trim()
           const descVal = parts[1].replace(/^"|"$/g, '').trim()
           const targetVal = parts[2].replace(/^"|"$/g, '').trim()
-          
+
           // 種別判定（httpから始まればURL、それ以外はapp）
           const typeVal: 'url' | 'app' = targetVal.startsWith('http://') || targetVal.startsWith('https://') ? 'url' : 'app'
 
@@ -391,9 +410,9 @@ function SettingsUI() {
         const updated = [...shortcuts, ...importedList]
         setShortcuts(updated)
         if (ipcRenderer) ipcRenderer.invoke('save-shortcuts', updated)
-        alert(`${importedList.length} 件のショートカットをインポートしました！`)
+        alert(t('csvImportSuccess', { count: importedList.length }))
       } else {
-        alert('有効なデータが見つかりませんでした。CSVの形式（名前,説明,URL）を確認してください。')
+        alert(t('csvImportInvalid'))
       }
     }
     reader.readAsText(file)
@@ -403,11 +422,11 @@ function SettingsUI() {
   // --- CSV エクスポート処理 ---
   const handleExportCSV = () => {
     if (shortcuts.length === 0) {
-      alert('エクスポートするショートカットがありません。')
+      alert(t('csvExportEmpty'))
       return
     }
 
-    const header = '名前,説明,URL\n'
+    const header = `${t('csvHeader')}\n`
     const rows = shortcuts
       .map(s => `"${s.name.replace(/"/g, '""')}","${s.description.replace(/"/g, '""')}","${s.target.replace(/"/g, '""')}"`)
       .join('\n')
@@ -424,8 +443,8 @@ function SettingsUI() {
     <div style={{
       display: 'flex',
       height: '100vh',
-      backgroundColor: '#262624',
-      color: '#d4d2ce',
+      backgroundColor: '#161d1c',
+      color: '#d6e0dd',
       fontFamily: 'sans-serif',
       boxSizing: 'border-box',
       overflow: 'hidden'
@@ -433,8 +452,8 @@ function SettingsUI() {
       {/* 1. 左側サイドバー */}
       <div style={{
         width: '220px',
-        backgroundColor: '#1e1e1c',
-        borderRight: '1px solid #3d3d39',
+        backgroundColor: '#111716',
+        borderRight: '1px solid #2c3634',
         padding: '20px 10px',
         display: 'flex',
         flexDirection: 'column',
@@ -444,18 +463,37 @@ function SettingsUI() {
         boxSizing: 'border-box'
       }}>
         <div style={{
-          color: '#f2f0ec',
+          color: '#eef5f3',
           fontWeight: 'bold',
           fontSize: '16px',
           padding: '0 12px 16px 12px',
-          borderBottom: '1px solid #3d3d39',
+          borderBottom: '1px solid #2c3634',
           marginBottom: '10px',
           display: 'flex',
           alignItems: 'center',
           gap: '8px'
         }}>
-          SimpleLauncher
+          Dockly
         </div>
+
+        <select
+          value={language}
+          onChange={(e) => handleChangeLanguage(e.target.value as Language)}
+          aria-label={t('language')}
+          style={{
+            marginBottom: '10px',
+            padding: '6px 8px',
+            backgroundColor: '#131a19',
+            border: '1px solid #334140',
+            color: '#d6e0dd',
+            borderRadius: '4px',
+            fontSize: '12px',
+            cursor: 'pointer'
+          }}
+        >
+          <option value="ja">日本語</option>
+          <option value="en">English</option>
+        </select>
 
         <button
           onClick={() => setActiveTab('hotkey')}
@@ -466,15 +504,15 @@ function SettingsUI() {
             padding: '10px 12px',
             borderRadius: '6px',
             border: 'none',
-            backgroundColor: activeTab === 'hotkey' ? '#3a332c' : 'transparent',
-            color: activeTab === 'hotkey' ? '#cc785c' : '#a8a5a0',
+            backgroundColor: activeTab === 'hotkey' ? '#1c3d38' : 'transparent',
+            color: activeTab === 'hotkey' ? '#3fb3a9' : '#9aa8a5',
             cursor: 'pointer',
             textAlign: 'left',
             fontWeight: activeTab === 'hotkey' ? 'bold' : 'normal',
             fontSize: '14px'
           }}
         >
-          <Key size={16} /> 起動キー設定
+          <Key size={16} /> {t('tabHotkey')}
         </button>
 
         <button
@@ -486,15 +524,15 @@ function SettingsUI() {
             padding: '10px 12px',
             borderRadius: '6px',
             border: 'none',
-            backgroundColor: activeTab === 'shortcuts' ? '#3a332c' : 'transparent',
-            color: activeTab === 'shortcuts' ? '#cc785c' : '#a8a5a0',
+            backgroundColor: activeTab === 'shortcuts' ? '#1c3d38' : 'transparent',
+            color: activeTab === 'shortcuts' ? '#3fb3a9' : '#9aa8a5',
             cursor: 'pointer',
             textAlign: 'left',
             fontWeight: activeTab === 'shortcuts' ? 'bold' : 'normal',
             fontSize: '14px'
           }}
         >
-          <Plus size={16} /> ショートカット管理
+          <Plus size={16} /> {t('tabShortcuts')}
         </button>
 
         <button
@@ -506,15 +544,15 @@ function SettingsUI() {
             padding: '10px 12px',
             borderRadius: '6px',
             border: 'none',
-            backgroundColor: activeTab === 'about' ? '#3a332c' : 'transparent',
-            color: activeTab === 'about' ? '#cc785c' : '#a8a5a0',
+            backgroundColor: activeTab === 'about' ? '#1c3d38' : 'transparent',
+            color: activeTab === 'about' ? '#3fb3a9' : '#9aa8a5',
             cursor: 'pointer',
             textAlign: 'left',
             fontWeight: activeTab === 'about' ? 'bold' : 'normal',
             fontSize: '14px'
           }}
         >
-          <Info size={16} /> このアプリについて
+          <Info size={16} /> {t('tabAbout')}
         </button>
       </div>
 
@@ -523,17 +561,17 @@ function SettingsUI() {
         flex: 1,
         height: '100%',
         padding: '28px',
-        backgroundColor: '#262624',
+        backgroundColor: '#161d1c',
         overflowY: 'auto',
         boxSizing: 'border-box'
       }}>
         {/* タブ1: 起動キー設定 */}
         {activeTab === 'hotkey' && (
           <div>
-            <h2 style={{ color: '#f2f0ec', marginTop: 0, marginBottom: '20px' }}>起動キー設定</h2>
-            <section style={{ backgroundColor: '#30302e', padding: '20px', borderRadius: '8px', border: '1px solid #3d3d39' }}>
-              <h3 style={{ color: '#cc785c', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Key size={18} /> ランチャー起動ショートカット
+            <h2 style={{ color: '#eef5f3', marginTop: 0, marginBottom: '20px' }}>{t('tabHotkey')}</h2>
+            <section style={{ backgroundColor: '#1e2726', padding: '20px', borderRadius: '8px', border: '1px solid #2c3634' }}>
+              <h3 style={{ color: '#3fb3a9', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Key size={18} /> {t('hotkeySectionTitle')}
               </h3>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <button
@@ -541,9 +579,9 @@ function SettingsUI() {
                   onClick={() => setIsRecordingHotkey(true)}
                   style={{
                     padding: '8px 12px',
-                    backgroundColor: '#1a1a18',
-                    border: isRecordingHotkey ? '1px solid #cc785c' : '1px solid #47463f',
-                    color: isRecordingHotkey ? '#cc785c' : '#f2f0ec',
+                    backgroundColor: '#131a19',
+                    border: isRecordingHotkey ? '1px solid #3fb3a9' : '1px solid #334140',
+                    color: isRecordingHotkey ? '#3fb3a9' : '#eef5f3',
                     borderRadius: '4px',
                     width: '260px',
                     textAlign: 'left',
@@ -551,26 +589,26 @@ function SettingsUI() {
                     fontSize: '14px'
                   }}
                 >
-                  {isRecordingHotkey ? (recordingPreview || 'キーを押してください... (Escでキャンセル)') : hotkey}
+                  {isRecordingHotkey ? (recordingPreview || t('hotkeyRecordingPlaceholder')) : hotkey}
                 </button>
                 <button
                   onClick={handleSaveHotkey}
                   disabled={isRecordingHotkey}
                   style={{
                     padding: '8px 16px',
-                    backgroundColor: isRecordingHotkey ? '#38372f' : '#cc785c',
+                    backgroundColor: isRecordingHotkey ? '#1e2726' : '#3fb3a9',
                     border: 'none',
-                    color: isRecordingHotkey ? '#a8a5a0' : '#1f1e1d',
+                    color: isRecordingHotkey ? '#9aa8a5' : '#0d1d1a',
                     fontWeight: 'bold',
                     borderRadius: '4px',
                     cursor: isRecordingHotkey ? 'default' : 'pointer'
                   }}
                 >
-                  保存
+                  {t('save')}
                 </button>
               </div>
-              <p style={{ color: '#7a766f', fontSize: '12px', marginTop: '10px', marginBottom: 0 }}>
-                上のボタンをクリックしてから、割り当てたいキーの組み合わせ（修飾キー+キー）を実際に押してください。
+              <p style={{ color: '#71807d', fontSize: '12px', marginTop: '10px', marginBottom: 0 }}>
+                {t('hotkeyHelperText')}
               </p>
             </section>
           </div>
@@ -579,13 +617,13 @@ function SettingsUI() {
         {/* タブ2: ショートカット管理 */}
         {activeTab === 'shortcuts' && (
           <div>
-            <h2 style={{ color: '#f2f0ec', marginTop: 0, marginBottom: '20px' }}>ショートカット管理</h2>
-            
+            <h2 style={{ color: '#eef5f3', marginTop: 0, marginBottom: '20px' }}>{t('tabShortcuts')}</h2>
+
             {/* CSV 一括読み込み / 書き出し */}
-            <section style={{ marginBottom: '20px', backgroundColor: '#30302e', padding: '16px 20px', borderRadius: '8px', border: '1px solid #3d3d39', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <section style={{ marginBottom: '20px', backgroundColor: '#1e2726', padding: '16px 20px', borderRadius: '8px', border: '1px solid #2c3634', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <h3 style={{ color: '#f2f0ec', margin: 0, fontSize: '15px' }}>一括データ操作 (CSV)</h3>
-                <p style={{ color: '#a8a5a0', margin: '4px 0 0 0', fontSize: '12px' }}>「名前, 説明, URL」の構成でCSVから登録・書き出しが可能です。</p>
+                <h3 style={{ color: '#eef5f3', margin: 0, fontSize: '15px' }}>{t('csvSectionTitle')}</h3>
+                <p style={{ color: '#9aa8a5', margin: '4px 0 0 0', fontSize: '12px' }}>{t('csvSectionDesc')}</p>
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
                 <input
@@ -597,95 +635,100 @@ function SettingsUI() {
                 />
                 <button
                   onClick={() => fileInputRef.current?.click()}
+                  title={t('csvImport')}
+                  aria-label={t('csvImport')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    backgroundColor: '#38372f',
-                    border: '1px solid #47463f',
-                    color: '#cc785c',
+                    justifyContent: 'center',
+                    width: '36px',
+                    height: '36px',
+                    padding: 0,
+                    backgroundColor: '#1e2726',
+                    border: '1px solid #334140',
+                    color: '#3fb3a9',
                     borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: 'bold'
+                    cursor: 'pointer'
                   }}
                 >
-                  <Upload size={14} /> CSVインポート
+                  <Upload size={16} />
                 </button>
                 <button
                   onClick={handleExportCSV}
+                  title={t('csvExport')}
+                  aria-label={t('csvExport')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    backgroundColor: '#38372f',
-                    border: '1px solid #47463f',
-                    color: '#d4d2ce',
+                    justifyContent: 'center',
+                    width: '36px',
+                    height: '36px',
+                    padding: 0,
+                    backgroundColor: '#1e2726',
+                    border: '1px solid #334140',
+                    color: '#d6e0dd',
                     borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '13px'
+                    cursor: 'pointer'
                   }}
                 >
-                  <Download size={14} /> CSVエクスポート
+                  <Download size={16} />
                 </button>
               </div>
             </section>
 
             {/* 個別追加フォーム */}
-            <section style={{ marginBottom: '24px', backgroundColor: '#30302e', padding: '20px', borderRadius: '8px', border: '1px solid #3d3d39' }}>
-              <h3 style={{ color: '#cc785c', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Plus size={18} /> ショートカット手動追加
+            <section style={{ marginBottom: '24px', backgroundColor: '#1e2726', padding: '20px', borderRadius: '8px', border: '1px solid #2c3634' }}>
+              <h3 style={{ color: '#3fb3a9', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Plus size={18} /> {t('addShortcutTitle')}
               </h3>
               <form onSubmit={handleAddShortcut} style={{ display: 'grid', gap: '12px' }}>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input
                     type="text"
-                    placeholder="名前 (例: tenki)"
+                    placeholder={t('namePlaceholder')}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
-                    style={{ flex: 1, padding: '8px', backgroundColor: '#1a1a18', border: '1px solid #47463f', color: '#f2f0ec', borderRadius: '4px' }}
+                    style={{ flex: 1, padding: '8px', backgroundColor: '#131a19', border: '1px solid #334140', color: '#eef5f3', borderRadius: '4px' }}
                   />
                   <input
                     type="text"
-                    placeholder="説明 (例: ヤフー天気)"
+                    placeholder={t('descPlaceholder')}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    style={{ flex: 1, padding: '8px', backgroundColor: '#1a1a18', border: '1px solid #47463f', color: '#f2f0ec', borderRadius: '4px' }}
+                    style={{ flex: 1, padding: '8px', backgroundColor: '#131a19', border: '1px solid #334140', color: '#eef5f3', borderRadius: '4px' }}
                   />
                   <select
                     value={type}
                     onChange={(e) => setType(e.target.value as 'url' | 'app')}
-                    style={{ padding: '8px', backgroundColor: '#1a1a18', border: '1px solid #47463f', color: '#f2f0ec', borderRadius: '4px' }}
+                    style={{ padding: '8px', backgroundColor: '#131a19', border: '1px solid #334140', color: '#eef5f3', borderRadius: '4px' }}
                   >
-                    <option value="url">Web (URL)</option>
-                    <option value="app">アプリ (.exe)</option>
+                    <option value="url">{t('typeUrl')}</option>
+                    <option value="app">{t('typeApp')}</option>
                   </select>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input
                     type="text"
-                    placeholder="URL または ファイルパス (例: https://weather.yahoo.co.jp/weather/)"
+                    placeholder={t('targetPlaceholder')}
                     value={target}
                     onChange={(e) => setTarget(e.target.value)}
                     required
-                    style={{ flex: 1, padding: '8px', backgroundColor: '#1a1a18', border: '1px solid #47463f', color: '#f2f0ec', borderRadius: '4px' }}
+                    style={{ flex: 1, padding: '8px', backgroundColor: '#131a19', border: '1px solid #334140', color: '#eef5f3', borderRadius: '4px' }}
                   />
                   <button
                     type="submit"
                     style={{
                       padding: '8px 20px',
-                      backgroundColor: '#cc785c',
+                      backgroundColor: '#3fb3a9',
                       border: 'none',
-                      color: '#f2f0ec',
+                      color: '#eef5f3',
                       fontWeight: 'bold',
                       borderRadius: '4px',
                       cursor: 'pointer'
                     }}
                   >
-                    追加
+                    {t('add')}
                   </button>
                 </div>
               </form>
@@ -693,7 +736,7 @@ function SettingsUI() {
 
             {/* 一覧表示 */}
             <section>
-              <h3 style={{ color: '#f2f0ec', fontSize: '16px' }}>登録済みショートカット ({shortcuts.length})</h3>
+              <h3 style={{ color: '#eef5f3', fontSize: '16px' }}>{t('registeredShortcuts')} ({shortcuts.length})</h3>
               <div style={{ display: 'grid', gap: '8px' }}>
                 {shortcuts.map((item) => (
                   <div
@@ -701,20 +744,20 @@ function SettingsUI() {
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      backgroundColor: '#30302e',
+                      backgroundColor: '#1e2726',
                       padding: '10px 15px',
                       borderRadius: '6px',
-                      border: '1px solid #3d3d39'
+                      border: '1px solid #2c3634'
                     }}
                   >
                     <div style={{ flex: 1 }}>
-                      <span style={{ color: '#cc785c', fontWeight: 'bold', marginRight: '10px' }}>[{item.name}]</span>
-                      <span style={{ color: '#f2f0ec', marginRight: '10px' }}>{item.description}</span>
-                      <span style={{ color: '#7a766f', fontSize: '12px' }}>({item.target})</span>
+                      <span style={{ color: '#3fb3a9', fontWeight: 'bold', marginRight: '10px' }}>[{item.name}]</span>
+                      <span style={{ color: '#eef5f3', marginRight: '10px' }}>{item.description}</span>
+                      <span style={{ color: '#71807d', fontSize: '12px' }}>({item.target})</span>
                     </div>
                     <button
                       onClick={() => handleDeleteShortcut(item.id)}
-                      style={{ background: 'none', border: 'none', color: '#c2645c', cursor: 'pointer' }}
+                      style={{ background: 'none', border: 'none', color: '#d16b62', cursor: 'pointer' }}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -728,19 +771,19 @@ function SettingsUI() {
         {/* タブ3: このアプリについて */}
         {activeTab === 'about' && (
           <div>
-            <h2 style={{ color: '#f2f0ec', marginTop: 0, marginBottom: '20px' }}>このアプリについて</h2>
+            <h2 style={{ color: '#eef5f3', marginTop: 0, marginBottom: '20px' }}>{t('tabAbout')}</h2>
             <div style={{
-              backgroundColor: '#30302e',
+              backgroundColor: '#1e2726',
               padding: '30px',
               borderRadius: '8px',
-              border: '1px solid #3d3d39',
+              border: '1px solid #2c3634',
               textAlign: 'center'
             }}>
-              <h3 style={{ color: '#f2f0ec', fontSize: '22px', margin: '0 0 6px 0' }}>{aboutInfo.appName}</h3>
+              <h3 style={{ color: '#eef5f3', fontSize: '22px', margin: '0 0 6px 0' }}>{aboutInfo.appName}</h3>
               <span style={{
                 display: 'inline-block',
-                backgroundColor: '#3a332c',
-                color: '#cc785c',
+                backgroundColor: '#1c3d38',
+                color: '#3fb3a9',
                 padding: '3px 10px',
                 borderRadius: '12px',
                 fontSize: '12px',
@@ -749,24 +792,24 @@ function SettingsUI() {
               }}>
                 v{aboutInfo.version}
               </span>
-              <p style={{ color: '#d4d2ce', fontSize: '14px', maxWidth: '420px', margin: '0 auto 24px auto', lineHeight: '1.5' }}>
-                {aboutInfo.description}
+              <p style={{ color: '#d6e0dd', fontSize: '14px', maxWidth: '420px', margin: '0 auto 24px auto', lineHeight: '1.5' }}>
+                {aboutInfo.description || t('aboutDescription')}
               </p>
 
               <div style={{
-                borderTop: '1px solid #3d3d39',
+                borderTop: '1px solid #2c3634',
                 paddingTop: '20px',
                 maxWidth: '420px',
                 margin: '0 auto',
                 textAlign: 'left',
                 fontSize: '14px'
               }}>
-                <div style={{ display: 'flex', padding: '8px 0', borderBottom: '1px solid #3d3d39' }}>
-                  <span style={{ width: '100px', color: '#7a766f' }}>制作者</span>
-                  <span style={{ color: '#f2f0ec' }}>{aboutInfo.author}</span>
+                <div style={{ display: 'flex', padding: '8px 0', borderBottom: '1px solid #2c3634' }}>
+                  <span style={{ width: '100px', color: '#71807d' }}>{t('author')}</span>
+                  <span style={{ color: '#eef5f3' }}>{aboutInfo.author}</span>
                 </div>
-                <div style={{ display: 'flex', padding: '8px 0', borderBottom: '1px solid #3d3d39' }}>
-                  <span style={{ width: '100px', color: '#7a766f' }}>GitHub</span>
+                <div style={{ display: 'flex', padding: '8px 0', borderBottom: '1px solid #2c3634' }}>
+                  <span style={{ width: '100px', color: '#71807d' }}>GitHub</span>
                   <a
                     href={aboutInfo.githubUrl}
                     target="_blank"
@@ -780,15 +823,15 @@ function SettingsUI() {
                         window.open(aboutInfo.githubUrl, '_blank')
                       }
                     }}
-                    style={{ color: '#cc785c', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+                    style={{ color: '#3fb3a9', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
                   >
                     {aboutInfo.githubUrl} <ExternalLink size={12} />
                   </a>
                 </div>
                 {aboutInfo.license && (
-                  <div style={{ display: 'flex', padding: '8px 0', borderBottom: '1px solid #3d3d39' }}>
-                    <span style={{ width: '100px', color: '#7a766f' }}>ライセンス</span>
-                    <span style={{ color: '#f2f0ec' }}>{aboutInfo.license}</span>
+                  <div style={{ display: 'flex', padding: '8px 0', borderBottom: '1px solid #2c3634' }}>
+                    <span style={{ width: '100px', color: '#71807d' }}>{t('license')}</span>
+                    <span style={{ color: '#eef5f3' }}>{aboutInfo.license}</span>
                   </div>
                 )}
 
@@ -803,9 +846,9 @@ function SettingsUI() {
                       gap: '8px',
                       width: '100%',
                       padding: '10px 16px',
-                      backgroundColor: checkingUpdate ? '#38372f' : '#cc785c',
+                      backgroundColor: checkingUpdate ? '#1e2726' : '#3fb3a9',
                       border: 'none',
-                      color: checkingUpdate ? '#a8a5a0' : '#f2f0ec',
+                      color: checkingUpdate ? '#9aa8a5' : '#eef5f3',
                       fontWeight: 'bold',
                       borderRadius: '4px',
                       cursor: checkingUpdate ? 'default' : 'pointer',
@@ -813,7 +856,7 @@ function SettingsUI() {
                     }}
                   >
                     <RefreshCw size={14} className={checkingUpdate ? 'spin' : ''} />
-                    {checkingUpdate ? '確認中...' : 'アップデートを確認'}
+                    {checkingUpdate ? t('checkingUpdate') : t('checkUpdate')}
                   </button>
                 </div>
               </div>
