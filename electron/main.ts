@@ -90,6 +90,7 @@ interface StoreSchema {
   hotkey: string
   shortcuts: ShortcutData[]
   language: Language
+  autoLaunchInitialized: boolean
 }
 
 const store = new Store<StoreSchema>({
@@ -109,6 +110,19 @@ function getLanguage(): Language {
 
 function getLocale() {
   return LOCALES[getLanguage()]
+}
+
+// --- スタートアップ（Windowsログイン時の自動起動）登録 ---
+// 開発時（npm run dev）にOSのスタートアップへ登録してしまわないよう、パッケージ版でのみ実際にAPIを呼び出す
+function getAutoLaunchEnabled(): boolean {
+  if (!app.isPackaged) return false
+  return app.getLoginItemSettings().openAtLogin
+}
+
+function setAutoLaunchEnabled(enabled: boolean): boolean {
+  if (!app.isPackaged) return false
+  app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath })
+  return app.getLoginItemSettings().openAtLogin
 }
 
 let mainWindow: BrowserWindow | null = null
@@ -251,6 +265,7 @@ ipcMain.handle('get-store-data', () => {
     hotkey: store.get('hotkey'),
     shortcuts: store.get('shortcuts'),
     language: getLanguage(),
+    autoLaunch: getAutoLaunchEnabled(),
   }
 })
 
@@ -273,6 +288,11 @@ ipcMain.handle('save-language', (_, language: Language) => {
   store.set('language', language === 'ja' ? 'ja' : 'en')
   updateTrayMenu()
   return true
+})
+
+// 3.6 スタートアップ（Windowsログイン時の自動起動）設定の変更・保存
+ipcMain.handle('set-auto-launch', (_, enabled: boolean) => {
+  return setAutoLaunchEnabled(enabled)
 })
 
 // 4. URLまたはアプリの起動処理
@@ -392,6 +412,13 @@ app.whenReady().then(() => {
   if (!store.has('language')) {
     const osLocale = app.getLocale().toLowerCase()
     store.set('language', osLocale.startsWith('ja') ? 'ja' : 'en')
+  }
+
+  // 初回起動時のみ、Windowsのスタートアップに自動登録する
+  // （一度でも設定を保存していれば、以降はユーザーの選択（設定画面のトグル）を尊重する）
+  if (app.isPackaged && !store.has('autoLaunchInitialized')) {
+    setAutoLaunchEnabled(true)
+    store.set('autoLaunchInitialized', true)
   }
 
   createMainWindow()

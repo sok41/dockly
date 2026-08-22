@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, Globe, AppWindow, Plus, Trash2, Key, Info, ExternalLink, Upload, Download, RefreshCw } from 'lucide-react'
+import { Search, Globe, AppWindow, Plus, Trash2, Key, Info, ExternalLink, Upload, Download, RefreshCw, Power } from 'lucide-react'
 import pkg from '../package.json'
 
 // Electron IPCの読み込み (nodeIntegration: true)
@@ -211,6 +211,7 @@ function SettingsUI() {
   const [recordingPreview, setRecordingPreview] = useState('')
   const [shortcuts, setShortcuts] = useState<ShortcutItem[]>([])
   const [language, setLanguage] = useState<Language>('en')
+  const [autoLaunch, setAutoLaunch] = useState(false)
 
   // ファイル選択用の参照
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -237,9 +238,10 @@ function SettingsUI() {
   useEffect(() => {
     // 既存データの読み込み
     if (ipcRenderer) {
-      ipcRenderer.invoke('get-store-data').then((data: { hotkey?: string; shortcuts?: ShortcutItem[]; language?: Language }) => {
+      ipcRenderer.invoke('get-store-data').then((data: { hotkey?: string; shortcuts?: ShortcutItem[]; language?: Language; autoLaunch?: boolean }) => {
         setHotkey(data.hotkey || 'Ctrl+Alt+L')
         setShortcuts(data.shortcuts || [])
+        setAutoLaunch(!!data.autoLaunch)
         const lang: Language = data.language === 'ja' ? 'ja' : 'en'
         setLanguage(lang)
         i18n.changeLanguage(lang)
@@ -312,6 +314,15 @@ function SettingsUI() {
       alert(t('hotkeySavedSuccess'))
     } else {
       alert(t('hotkeySavedConflict'))
+    }
+  }
+
+  // スタートアップ（Windowsログイン時の自動起動）のON/OFF切り替え
+  const handleToggleAutoLaunch = async (enabled: boolean) => {
+    setAutoLaunch(enabled)
+    if (ipcRenderer) {
+      const actual = await ipcRenderer.invoke('set-auto-launch', enabled)
+      setAutoLaunch(actual)
     }
   }
 
@@ -610,6 +621,20 @@ function SettingsUI() {
               <p style={{ color: '#71807d', fontSize: '12px', marginTop: '10px', marginBottom: 0 }}>
                 {t('hotkeyHelperText')}
               </p>
+            </section>
+
+            <section style={{ marginTop: '16px', backgroundColor: '#1e2726', padding: '20px', borderRadius: '8px', border: '1px solid #2c3634' }}>
+              <h3 style={{ color: '#3fb3a9', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Power size={18} /> {t('startupSectionTitle')}
+              </h3>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#eef5f3', fontSize: '14px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={autoLaunch}
+                  onChange={(e) => handleToggleAutoLaunch(e.target.checked)}
+                />
+                {t('autoLaunchLabel')}
+              </label>
             </section>
           </div>
         )}

@@ -22,6 +22,9 @@ const resources = {
       hotkeySavedConflict: '保存はしましたが、このキーの組み合わせは他のアプリと競合しているため、今回は登録できませんでした。別のキーをお試しください。',
       save: '保存',
 
+      startupSectionTitle: 'スタートアップ設定',
+      autoLaunchLabel: 'Windows起動時に自動で起動する',
+
       csvSectionTitle: '一括データ操作 (CSV)',
       csvSectionDesc: '「名前, 説明, URL」の構成でCSVから登録・書き出しが可能です。',
       csvHeader: '名前,説明,URL',
@@ -65,6 +68,9 @@ const resources = {
       hotkeySavedSuccess: 'Hotkey updated!',
       hotkeySavedConflict: "Saved, but this key combination is already used by another app and couldn't be registered. Please try a different combination.",
       save: 'Save',
+
+      startupSectionTitle: 'Startup',
+      autoLaunchLabel: 'Launch automatically when Windows starts',
 
       csvSectionTitle: 'Bulk Actions (CSV)',
       csvSectionDesc: 'Import or export shortcuts as CSV with the columns "Name, Description, URL".',
