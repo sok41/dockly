@@ -13,6 +13,23 @@ A simple Windows desktop launcher that lets you open your favorite websites and 
 - **Runs in the system tray**: Doesn't clutter your taskbar — use the tray icon for Show / Settings / Quit.
 - **Automatic update check**: Check for the latest version on GitHub Releases from the settings screen and install it right away.
 
+## Installation
+
+Download the latest `Dockly-Setup-x.x.x.exe` from the [Releases](https://github.com/sok41/dockly/releases) page and run it.
+
+### If you see "Windows protected your PC"
+
+This is a **standard Windows notice** that commonly appears for small, independently-developed apps. It shows up because Dockly hasn't yet been run by enough people for Windows to recognize it — it does **not** mean any virus or malware was detected.
+
+You can safely continue with the installation:
+
+1. Click "More info" (if shown)
+2. Click "Run anyway"
+
+Installation will then proceed as normal. If you'd like to double-check, the full [source code](https://github.com/sok41/dockly) is public.
+
+> Code signing will be added in a future release to remove this notice entirely.
+
 ## Usage
 
 ### 1. Launch the app
