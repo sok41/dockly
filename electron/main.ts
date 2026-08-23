@@ -129,6 +129,15 @@ let mainWindow: BrowserWindow | null = null
 let settingsWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
+// ランチャーウィンドウを表示する共通処理。
+// mainWindow は起動時に一度作られたまま隠す/表示するだけで中身は再読み込みされないため、
+// 表示するたびに 'window-shown' を送り、レンダラー側で最新のショートカット一覧を取り直させる
+function showMainWindow() {
+  mainWindow?.show()
+  mainWindow?.focus()
+  mainWindow?.webContents.send('window-shown')
+}
+
 // グローバルショートカットの登録関数
 // 戻り値: 登録に成功したか（他アプリと競合している場合は false になる）
 function registerGlobalShortcut(shortcutKey: string): boolean {
@@ -138,8 +147,7 @@ function registerGlobalShortcut(shortcutKey: string): boolean {
       if (mainWindow?.isVisible()) {
         mainWindow.hide()
       } else {
-        mainWindow?.show()
-        mainWindow?.focus()
+        showMainWindow()
       }
     })
     if (!success) {
@@ -223,7 +231,7 @@ function updateTrayMenu() {
   const locale = getLocale()
 
   const contextMenu = Menu.buildFromTemplate([
-    { label: locale.trayShow, click: () => { mainWindow?.show(); mainWindow?.focus() } },
+    { label: locale.trayShow, click: () => { showMainWindow() } },
     { label: locale.traySettings, click: () => { createSettingsWindow() } },
     { type: 'separator' },
     { label: locale.trayQuit, click: () => { app.quit() } },
@@ -254,7 +262,7 @@ function createTray() {
   }
 
   tray = new Tray(icon)
-  tray.on('click', () => { mainWindow?.show(); mainWindow?.focus() })
+  tray.on('click', () => { showMainWindow() })
   updateTrayMenu()
 }
 
@@ -272,6 +280,8 @@ ipcMain.handle('get-store-data', () => {
 // 2. ショートカット一覧の保存
 ipcMain.handle('save-shortcuts', (_, shortcuts) => {
   store.set('shortcuts', shortcuts)
+  // ランチャーウィンドウが既に開いている場合に備え、即座に最新データを反映させる
+  mainWindow?.webContents.send('shortcuts-updated', shortcuts)
   return true
 })
 

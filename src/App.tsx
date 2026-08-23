@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, Globe, AppWindow, Plus, Trash2, Key, Info, ExternalLink, Upload, Download, RefreshCw, Power } from 'lucide-react'
+import { Search, Globe, AppWindow, Plus, Trash2, Key, Info, ExternalLink, Upload, Download, RefreshCw, Power, Pencil, X } from 'lucide-react'
 import pkg from '../package.json'
 
 // Electron IPCの読み込み (nodeIntegration: true)
@@ -74,12 +74,26 @@ function LauncherUI() {
   const [selectedIndex, setSelectedIndex] = useState(0)
 
   // ショートカット一覧・言語設定を取得
+  // このウィンドウ(mainWindow)は起動時に一度作られたまま表示/非表示を繰り返すだけで
+  // 再読み込みされないため、初回読み込みだけでなく「表示されるたび」「設定画面で保存されるたび」にも
+  // 最新のショートカット一覧を取り直す
   useEffect(() => {
-    if (ipcRenderer) {
+    if (!ipcRenderer) return
+
+    const loadStoreData = () => {
       ipcRenderer.invoke('get-store-data').then((data: { shortcuts?: ShortcutItem[]; hotkey?: string; language?: Language }) => {
         setShortcuts(data.shortcuts || [])
         if (data.language) i18n.changeLanguage(data.language)
       })
+    }
+
+    loadStoreData() // 初回読み込み
+    ipcRenderer.on('window-shown', loadStoreData) // ウィンドウ表示のたびに再取得
+    ipcRenderer.on('shortcuts-updated', (_event: unknown, updated: ShortcutItem[]) => setShortcuts(updated)) // 設定画面での保存を即反映
+
+    return () => {
+      ipcRenderer.removeAllListeners('window-shown')
+      ipcRenderer.removeAllListeners('shortcuts-updated')
     }
   }, [i18n])
 
@@ -234,6 +248,7 @@ function SettingsUI() {
   const [description, setDescription] = useState('')
   const [target, setTarget] = useState('')
   const [type, setType] = useState<'url' | 'app'>('url')
+  const [editingId, setEditingId] = useState<string | null>(null) // 編集中のショートカットID（nullなら新規追加モード）
 
   useEffect(() => {
     // 既存データの読み込み
@@ -346,26 +361,51 @@ function SettingsUI() {
     }
   }
 
-  // ショートカットの新規追加
-  const handleAddShortcut = (e: React.FormEvent) => {
+  // ショートカットの新規追加・編集内容の保存（editingId の有無で分岐）
+  const handleSubmitShortcut = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name || !target) return
 
-    const newItem: ShortcutItem = {
-      id: Date.now().toString(),
-      name,
-      description,
-      target,
-      type
+    let updated: ShortcutItem[]
+    if (editingId) {
+      updated = shortcuts.map(s => s.id === editingId ? { ...s, name, description, target, type } : s)
+    } else {
+      const newItem: ShortcutItem = {
+        id: Date.now().toString(),
+        name,
+        description,
+        target,
+        type
+      }
+      updated = [...shortcuts, newItem]
     }
 
-    const updated = [...shortcuts, newItem]
     setShortcuts(updated)
     if (ipcRenderer) ipcRenderer.invoke('save-shortcuts', updated)
 
+    setEditingId(null)
     setName('')
     setDescription('')
     setTarget('')
+    setType('url')
+  }
+
+  // 編集開始: フォームに既存の内容を読み込む
+  const handleStartEditShortcut = (item: ShortcutItem) => {
+    setEditingId(item.id)
+    setName(item.name)
+    setDescription(item.description)
+    setTarget(item.target)
+    setType(item.type)
+  }
+
+  // 編集のキャンセル
+  const handleCancelEditShortcut = () => {
+    setEditingId(null)
+    setName('')
+    setDescription('')
+    setTarget('')
+    setType('url')
   }
 
   // ショートカットの削除
@@ -373,6 +413,7 @@ function SettingsUI() {
     const updated = shortcuts.filter(s => s.id !== id)
     setShortcuts(updated)
     if (ipcRenderer) ipcRenderer.invoke('save-shortcuts', updated)
+    if (editingId === id) handleCancelEditShortcut() // 編集中の項目が削除された場合はフォームをリセット
   }
 
   // --- CSV インポート処理 ---
@@ -701,12 +742,12 @@ function SettingsUI() {
               </div>
             </section>
 
-            {/* 個別追加フォーム */}
-            <section style={{ marginBottom: '24px', backgroundColor: '#1e2726', padding: '20px', borderRadius: '8px', border: '1px solid #2c3634' }}>
+            {/* 個別追加・編集フォーム */}
+            <section style={{ marginBottom: '24px', backgroundColor: '#1e2726', padding: '20px', borderRadius: '8px', border: editingId ? '1px solid #3fb3a9' : '1px solid #2c3634' }}>
               <h3 style={{ color: '#3fb3a9', marginTop: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Plus size={18} /> {t('addShortcutTitle')}
+                {editingId ? <Pencil size={18} /> : <Plus size={18} />} {editingId ? t('editShortcutTitle') : t('addShortcutTitle')}
               </h3>
-              <form onSubmit={handleAddShortcut} style={{ display: 'grid', gap: '12px' }}>
+              <form onSubmit={handleSubmitShortcut} style={{ display: 'grid', gap: '12px' }}>
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input
                     type="text"
@@ -753,8 +794,27 @@ function SettingsUI() {
                       cursor: 'pointer'
                     }}
                   >
-                    {t('add')}
+                    {editingId ? t('update') : t('add')}
                   </button>
+                  {editingId && (
+                    <button
+                      type="button"
+                      onClick={handleCancelEditShortcut}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 16px',
+                        backgroundColor: 'transparent',
+                        border: '1px solid #334140',
+                        color: '#9aa8a5',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <X size={14} /> {t('cancelEdit')}
+                    </button>
+                  )}
                 </div>
               </form>
             </section>
@@ -772,7 +832,7 @@ function SettingsUI() {
                       backgroundColor: '#1e2726',
                       padding: '10px 15px',
                       borderRadius: '6px',
-                      border: '1px solid #2c3634'
+                      border: item.id === editingId ? '1px solid #3fb3a9' : '1px solid #2c3634'
                     }}
                   >
                     <div style={{ flex: 1 }}>
@@ -781,8 +841,18 @@ function SettingsUI() {
                       <span style={{ color: '#71807d', fontSize: '12px' }}>({item.target})</span>
                     </div>
                     <button
+                      onClick={() => handleStartEditShortcut(item)}
+                      title={t('edit')}
+                      aria-label={t('edit')}
+                      style={{ background: 'none', border: 'none', color: '#9aa8a5', cursor: 'pointer', marginRight: '4px', padding: '4px' }}
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
                       onClick={() => handleDeleteShortcut(item.id)}
-                      style={{ background: 'none', border: 'none', color: '#d16b62', cursor: 'pointer' }}
+                      title={t('delete')}
+                      aria-label={t('delete')}
+                      style={{ background: 'none', border: 'none', color: '#d16b62', cursor: 'pointer', padding: '4px' }}
                     >
                       <Trash2 size={16} />
                     </button>
