@@ -169,7 +169,7 @@ function createMainWindow() {
     resizable: false,
     alwaysOnTop: true,
     transparent: true,
-    show: true,
+    show: false, // アプリ起動時に自動で表示されないようにする（ホットキー/トレイから明示的に開くまで非表示のまま）
     hasShadow: false,
     skipTaskbar: true,
     icon: APP_ICON_PATH,
