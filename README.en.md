@@ -4,6 +4,8 @@
 
 A simple Windows desktop launcher that lets you open your favorite websites and apps instantly with a single hotkey.
 
+![Demo](docs/images/demo.gif)
+
 ## Features
 
 - **Launch with a hotkey**: Press your configured key (default: `Ctrl+Alt+L`) to bring up the search bar. Press it again, or click away, to hide it.
