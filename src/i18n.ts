@@ -26,12 +26,12 @@ const resources = {
       autoLaunchLabel: 'Windows起動時に自動で起動する',
 
       csvSectionTitle: '一括データ操作 (CSV)',
-      csvSectionDesc: '「名前, 説明, URL」の構成でCSVから登録・書き出しが可能です。',
-      csvHeader: '名前,説明,URL',
+      csvSectionDesc: '「名前, URL, 説明」の構成でCSVから登録・書き出しが可能です（説明は省略可）。',
+      csvHeader: '名前,URL,説明',
       csvImport: 'CSVインポート',
       csvExport: 'CSVエクスポート',
       csvImportSuccess: '{{count}} 件のショートカットをインポートしました！',
-      csvImportInvalid: '有効なデータが見つかりませんでした。CSVの形式（名前,説明,URL）を確認してください。',
+      csvImportInvalid: '有効なデータが見つかりませんでした。CSVの形式（名前,URL,説明）を確認してください。',
       csvExportEmpty: 'エクスポートするショートカットがありません。',
 
       addShortcutTitle: 'ショートカット手動追加',
@@ -78,12 +78,12 @@ const resources = {
       autoLaunchLabel: 'Launch automatically when Windows starts',
 
       csvSectionTitle: 'Bulk Actions (CSV)',
-      csvSectionDesc: 'Import or export shortcuts as CSV with the columns "Name, Description, URL".',
-      csvHeader: 'Name,Description,URL',
+      csvSectionDesc: 'Import or export shortcuts as CSV with the columns "Name, URL, Description" (Description is optional).',
+      csvHeader: 'Name,URL,Description',
       csvImport: 'Import CSV',
       csvExport: 'Export CSV',
       csvImportSuccess: '{{count}} shortcut(s) imported!',
-      csvImportInvalid: 'No valid data found. Please check the CSV format (Name, Description, URL).',
+      csvImportInvalid: 'No valid data found. Please check the CSV format (Name, URL, Description).',
       csvExportEmpty: 'There are no shortcuts to export.',
 
       addShortcutTitle: 'Add Shortcut',

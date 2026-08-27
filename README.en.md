@@ -9,7 +9,7 @@ A simple Windows desktop launcher that lets you open your favorite websites and 
 - **Launch with a hotkey**: Press your configured key (default: `Ctrl+Alt+L`) to bring up the search bar. Press it again, or click away, to hide it.
 - **Incremental search**: Filter your saved shortcuts by name or description, then select with `↑` `↓` (or `Tab` / `Shift+Tab`) and press `Enter` to launch.
 - **URLs and apps**: Register website URLs as well as local app paths (`.exe`, etc.).
-- **Bulk management via CSV**: Import and export your shortcuts as CSV (`Name,Description,URL`).
+- **Bulk management via CSV**: Import and export your shortcuts as CSV (`Name,URL,Description`; Description is optional).
 - **Runs in the system tray**: Doesn't clutter your taskbar — use the tray icon for Show / Settings / Quit.
 - **Automatic update check**: Check for the latest version on GitHub Releases from the settings screen and install it right away.
 
@@ -44,7 +44,7 @@ Right-click the tray icon → "Settings" to open the settings window.
 2. Enter a name, description, URL/file path, and type (Web / App), then click "Add"
 3. Remove entries you no longer need with the delete icon
 
-To register shortcuts in bulk, use "Bulk Actions (CSV)" to import a CSV file with the columns `Name,Description,URL`. You can also export your current shortcuts as CSV.
+To register shortcuts in bulk, use "Bulk Actions (CSV)" to import a CSV file with the columns `Name,URL,Description` (the Description column is optional). You can also export your current shortcuts as CSV.
 
 ### 3. Search and launch
 

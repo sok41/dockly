@@ -66,6 +66,51 @@ function codeToAcceleratorKey(code: string): string | null {
   return null
 }
 
+// CSVの1行を正しくフィールドに分割する（ダブルクォート内のカンマ・""によるエスケープに対応し、
+// 空欄のフィールド（連続するカンマ）もそのまま空文字として扱う）
+function parseCSVLine(line: string): string[] {
+  const fields: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          current += '"'
+          i++
+        } else {
+          inQuotes = false
+        }
+      } else {
+        current += ch
+      }
+    } else if (ch === '"') {
+      inQuotes = true
+    } else if (ch === ',') {
+      fields.push(current.trim())
+      current = ''
+    } else {
+      current += ch
+    }
+  }
+  fields.push(current.trim())
+  return fields
+}
+
+// CSVファイルの内容をテキストとして読み込む。
+// UTF-8として正しく解釈できればそのまま使い、できない場合はShift_JIS
+// （Excel等が生成する日本語CSVで一般的な文字コード）として読み直す
+function decodeCsvBuffer(buffer: ArrayBuffer): string {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+    return text.charCodeAt(0) === 0xFEFF ? text.slice(1) : text // 先頭のBOMを除去
+  } catch {
+    return new TextDecoder('shift_jis').decode(buffer)
+  }
+}
+
 // --- メイン画面（ランチャー本体） ---
 function LauncherUI() {
   const { t, i18n } = useTranslation()
@@ -417,44 +462,62 @@ function SettingsUI() {
   }
 
   // --- CSV インポート処理 ---
+  // カラム順は「名前,URL,説明」を基本とするが、ヘッダー行があればその見出しから
+  // 実際の並び順を自動判定するため、旧形式（名前,説明,URL）のファイルもそのまま取り込める。
+  // 説明列は省略可能（名前とURLさえあれば取り込む）。
   const handleImportCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
     const reader = new FileReader()
     reader.onload = (event) => {
-      const text = event.target?.result as string
-      if (!text) return
+      const buffer = event.target?.result as ArrayBuffer
+      if (!buffer) return
+      const text = decodeCsvBuffer(buffer)
 
       const lines = text.split(/\r?\n/)
       const importedList: ShortcutItem[] = []
 
+      // デフォルトの列位置（ヘッダーがない場合）: 名前, URL, 説明
+      let nameIdx = 0
+      let urlIdx = 1
+      let descIdx = 2
+      let startIndex = 0
+
+      const firstLine = lines[0]?.trim() ?? ''
+      const hasHeader = firstLine !== '' && (firstLine.includes('名前') || firstLine.toLowerCase().includes('name'))
+      if (hasHeader) {
+        startIndex = 1
+        const headerCols = parseCSVLine(firstLine).map(h => h.toLowerCase())
+        const findCol = (...keywords: string[]) => headerCols.findIndex(h => keywords.some(k => h.includes(k)))
+        const foundName = findCol('名前', 'name')
+        const foundUrl = findCol('url', 'パス', 'path')
+        const foundDesc = findCol('説明', 'description')
+        if (foundName >= 0) nameIdx = foundName
+        if (foundUrl >= 0) urlIdx = foundUrl
+        if (foundDesc >= 0) descIdx = foundDesc
+      }
+
       lines.forEach((line, index) => {
-        const trimmed = line.trim()
-        if (!trimmed) return
+        if (index < startIndex) return
+        if (!line.trim()) return
 
-        // ヘッダー行のスキップ（日本語/英語どちらの見出しにも対応）
-        if (index === 0 && (trimmed.includes('名前') || trimmed.toLowerCase().includes('name'))) return
+        const fields = parseCSVLine(line)
+        const nameVal = fields[nameIdx] || ''
+        const targetVal = fields[urlIdx] || ''
+        const descVal = fields[descIdx] || ''
 
-        // カンマ区切り（ダブルクォーテーション対応）
-        const parts = trimmed.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || trimmed.split(',')
-        if (parts.length >= 3) {
-          const nameVal = parts[0].replace(/^"|"$/g, '').trim()
-          const descVal = parts[1].replace(/^"|"$/g, '').trim()
-          const targetVal = parts[2].replace(/^"|"$/g, '').trim()
+        // 種別判定（httpから始まればURL、それ以外はapp）
+        const typeVal: 'url' | 'app' = targetVal.startsWith('http://') || targetVal.startsWith('https://') ? 'url' : 'app'
 
-          // 種別判定（httpから始まればURL、それ以外はapp）
-          const typeVal: 'url' | 'app' = targetVal.startsWith('http://') || targetVal.startsWith('https://') ? 'url' : 'app'
-
-          if (nameVal && targetVal) {
-            importedList.push({
-              id: (Date.now() + index).toString(),
-              name: nameVal,
-              description: descVal,
-              target: targetVal,
-              type: typeVal
-            })
-          }
+        if (nameVal && targetVal) {
+          importedList.push({
+            id: (Date.now() + index).toString(),
+            name: nameVal,
+            description: descVal,
+            target: targetVal,
+            type: typeVal
+          })
         }
       })
 
@@ -467,7 +530,7 @@ function SettingsUI() {
         alert(t('csvImportInvalid'))
       }
     }
-    reader.readAsText(file)
+    reader.readAsArrayBuffer(file)
     e.target.value = '' // リセット
   }
 
@@ -480,7 +543,7 @@ function SettingsUI() {
 
     const header = `${t('csvHeader')}\n`
     const rows = shortcuts
-      .map(s => `"${s.name.replace(/"/g, '""')}","${s.description.replace(/"/g, '""')}","${s.target.replace(/"/g, '""')}"`)
+      .map(s => `"${s.name.replace(/"/g, '""')}","${s.target.replace(/"/g, '""')}","${s.description.replace(/"/g, '""')}"`)
       .join('\n')
 
     const bom = new Uint8Array([0xef, 0xbb, 0xbf]) // UTF-8 BOM（文字化け防止）
