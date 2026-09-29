@@ -38,3 +38,6 @@ release/
 
 # テストファイルの場所
 test_files/
+
+# ローカル専用メモ（GitHubにはプッシュしない）
+CLAUDE.md

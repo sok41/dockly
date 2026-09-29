@@ -247,11 +247,13 @@ function LauncherUI() {
                 ) : (
                   <AppWindow size={18} color="#98c379" style={{ marginRight: '10px' }} />
                 )}
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ color: '#ffffff', fontWeight: 'bold', fontSize: '14px' }}>{item.name}</div>
-                  <div style={{ color: '#828997', fontSize: '12px' }}>{item.description}</div>
+                  {item.description && (
+                    <div style={{ color: '#828997', fontSize: '12px' }}>{item.description}</div>
+                  )}
+                  <div style={{ color: '#5c6370', fontSize: '11px', wordBreak: 'break-all' }}>{item.target}</div>
                 </div>
-                <div style={{ color: '#5c6370', fontSize: '11px' }}>{item.target}</div>
               </div>
             )
           })}
